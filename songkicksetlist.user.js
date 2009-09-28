@@ -17,7 +17,7 @@
 //
 // Future plans:
 // * support for parsing encores (have to be done manually for now)
-// * option to convert tracks to sentence case once parsed
+// * refactor to move functions out of global scope
 // 
 // --------------------------------------------------------------------
 //
@@ -32,126 +32,187 @@
     eqeqeq: true, plusplus: true, bitwise: true, regexp: true, 
     newcap: true, immed: true */
 
-/**
-* @param	string     prefix
-* @param	int        id
-* @return 	jQuery
-*/
-function create_track_input(prefix, id) {
-	var html = {};
-	//build a new song input
-    html.new_item = $("<dd></dd>");
-    
-    html.new_input = $("<input type='text' />");
-    html.new_input.attr("id", prefix + id);
-    html.new_input.attr("name", prefix + id);
-    html.new_input.addClass("text");
-    
-    html.new_item.append(html.new_input);
-    
-    //append new song to list in appropriate place
-    html.prev_id = id - 1;
-    $("#" + prefix + html.prev_id).parent().after(html.new_item);
-        
-    return html.new_input; //return jQuery object of new input
-}
+/* To Title Case 1.1.1
+ * David Gouch <http://individed.com>
+ * 23 May 2008
+ * License: http://individed.com/code/to-title-case/license.txt
+ *
+ * In response to John Gruber's call for a Javascript version of his script: 
+ * http://daringfireball.net/2008/05/title_case
+ */    
+String.prototype.toTitleCase = function () {
+    return this.replace(/([\w&`'‘’"“.@:\/\{\(\[<>_]+-? *)/g, function (match, p1, index, title) {
+        if (index > 0 && title.charAt(index - 2) !== ":" &&
+        	match.search(/^(a(nd?|s|t)?|b(ut|y)|en|for|i[fn]|o[fnr]|t(he|o)|vs?\.?|via)[ \-]/i) > -1) {
+            return match.toLowerCase();
+        }
+        if (title.substring(index - 1, index + 1).search(/['"_{(\[]/) > -1) {
+            return match.charAt(0) + match.charAt(1).toUpperCase() + match.substr(2);
+        }
+        if (match.substr(1).search(/[A-Z]+|&|[\w]+[._][\w]+/) > -1 || 
+        	title.substring(index - 1, index + 1).search(/[\])}]/) > -1) {
+            return match;
+        }
+        return match.charAt(0).toUpperCase() + match.substr(1);
+    });
+};
 
 /**
 * Strips several common forms of numbering & whitespace from the 
 * front of a string using a regular expression
 * examples that would be stripped: 1) #2 3. 4: 5
-* @param	string	input_string
-* @return	string
+* @param    string  input_string
+* @return   string
 */
-function strip_numbering(input_string) {
-	return input_string.replace(/^(\s*[#\d\.:\)]*\s*)/i, '');
-}
+String.prototype.stripNumbers = function () {
+    return this.replace(/^(\s*[#\d\.:\)]*\s*)/i, '');
+};
 
 /**
-* Splice blank tracks out and strip numbering if specified
-* @param	array	track_array
-* @return	array
+* @param    string  prefix
+* @param    int     id
+* @return   jQuery
 */
-function clean_tracks(track_array, strip_numbers) {
-	for (var i = 0; i < track_array.length; i = i + 1) {	
-		//strip numbering if specified
-		if (strip_numbers) {
-			track_array[i] = strip_numbering(track_array[i]);
-		}
-		//remove track if blank
-		if (track_array[i].length === 0) {
-			track_array.splice(i, 1);
-			i = i - 1;
-			continue;
-		}
-	}
-	return track_array;
-}
-
-/**
-* @param	string	input_string
-* @param	bool	strip_numbers			whether or not to strip numbers
-* @return	array
-*/
-function parse_tracks(input_string, strip_numbers) {
-    var track_array = input_string.split("\n");
-    track_array = clean_tracks(track_array, strip_numbers);
-    return track_array;   
-}
-
-function insert_track(prefix, i, track_name) {
-	var track_input = $("#" + prefix + i);
+function create_track_input(prefix, id) {
+    var new_item = $("<dd></dd>"),
+        new_input = $("<input type='text' />"),
+        prev_id = id - 1;
+        
+    new_input.attr("id", prefix + id);
+    new_input.attr("name", prefix + id);
+    new_input.addClass("text");
     
-    //create a new input field if it doesn't already exist
-    if (track_input.length !== 1) {
-    	track_input = create_track_input(prefix, i);
-    } 
+    new_item.append(new_input);
     
-    track_input.val(track_name);
+    //append new song to list in appropriate place
+    $("#" + prefix + prev_id).parent().after(new_item);
+        
+    return new_input; //return jQuery object of new input
 }
 
 /**
-* @param prefix is the prefix of the track inputs
+* @param    string  input_string    raw pasted text
+* @param    array   opts            list of true/false options for parsing
+* @return   array
+*/
+function parse_tracks(input_string, opts) {
+    var i, 
+        track_array = input_string.split("\n");
+    
+    //iterate over parsed tracks    
+    for (i = 0; i < track_array.length; i = i + 1) {    
+        //strip numbering
+        if (opts.stripNumbers) {
+            track_array[i] = track_array[i].stripNumbers();
+        }
+        
+        //remove track if blank
+        if (track_array[i].length === 0) {
+            track_array.splice(i, 1);
+            i = i - 1;
+            continue;
+        }
+        
+        //title casing
+        if (opts.titleCase) {
+            track_array[i] = track_array[i].toTitleCase();
+        }
+    }
+    
+    return track_array;
+}
+
+/**
+* @param    string  prefix
+* @param    array   track_array
+* @return   int
 */
 function insert_tracks(prefix, track_array) {
-    for (var i = 0; i < track_array.length; i = i + 1) {
-        insert_track(prefix, i, track_array[i]);
+    var i, track_input;
+    
+    for (i = 0; i < track_array.length; i = i + 1) {
+        track_input = $("#" + prefix + i);
+    
+        //create a new input field if it doesn't already exist
+        if (track_input.length !== 1) {
+            track_input = create_track_input(prefix, i);
+        } 
+        
+        track_input.val(track_array[i]);
     }
+    
     return i;
 }
 
-var onGoClick = function () {
-    var sl_paste = $("#sl_paste");
+/**
+* Fetch parsing options from list of checkboxes and return
+* as key-value pairs object.
+* @return   object
+*/
+function get_options() {
+    var i,
+        checkboxes = $("dd#parseopts input"), 
+        opts = {};
     
+    for (i = 0; i < checkboxes.length; i = i + 1) {
+        opts[checkboxes[i].id] = checkboxes[i].checked;
+    }
+    
+    return opts;
+}
+
+/**
+* go button click event handling
+*/
+var onGoClick = function () {
+    var sl_paste = $("#sl_paste"), 
+        track_text = sl_paste.val(), 
+        parse_opts = get_options(), 
+        prefix = this.id;
+        
     //insert tracks by parsing from paste area, taking number stripping option into account
-    insert_tracks("main_track_", parse_tracks(sl_paste.val(), $("#parse_clean")[0].checked));
+    insert_tracks(prefix, parse_tracks(track_text, parse_opts));
     sl_paste.val('');
 };
+
+function generate_option(id, label) {
+    var html = "<input id='" + id + "' type='checkbox' />&nbsp;" + label;
+    return html;
+}
 
 /**
 * Start injecting HTML and adding event listeners.
 */
 function init() {   
-	var html = {};     
+    var html = {};     
     html.deflist = $("div.fieldset dl:first");
     
-    html.label = $("<dt><label>Paste setlist here</label></dt>");
-    html.deflist.prepend(html.label);
+    html.ta_label = $("<dt><label>Paste setlist here</label></dt>");
+    html.deflist.prepend(html.ta_label);
     
-    html.dd = $("<dd></dd>");
+    html.pa_dd = $("<dd></dd>");
     
     html.paste_area = $("<textarea id='sl_paste'></textarea>");
     html.paste_area.css({"width": "180px", "height": "130px"});
-    html.dd.append(html.paste_area);
-    html.label.after(html.dd);
+    html.pa_dd.append(html.paste_area);
+    html.ta_label.after(html.pa_dd);
     
-    html.clean_checkbox = $("<dd><input id='parse_clean' type='checkbox' /> Remove numbering from beginning of track names</dd>");
-    html.dd.after(html.clean_checkbox);
+    html.cleanopts_label = $("<dt><label>Parsing options</label></dt>");
+    html.pa_dd.after(html.cleanopts_label);
     
-    html.go_btn = $("<dd><input class='submit button' type='button' value='Parse tracks' /></dd>");
-    html.clean_checkbox.after(html.go_btn);
+    html.clean_optlist = $("<dd id='parseopts'></dd>");
+    html.clean_optlist.append(generate_option("stripNumbers", "Remove numbering from beginning of track names"));
+    html.clean_optlist.append("<br />");
+    html.clean_optlist.append(generate_option("titleCase", "Convert tracks to Title Case"));
+    html.cleanopts_label.after(html.clean_optlist);
+    
+    html.parse_dd = $("<dd></dd>");
+    html.parse_btn = $("<input id='main_track_' class='submit button' type='button' value='Parse tracks' />");
     //add click event handler to Go button
-    html.go_btn.click(onGoClick); 
+    html.parse_btn.click(onGoClick);
+    html.parse_dd.append(html.parse_btn);
+    
+    html.clean_optlist.after(html.parse_dd);
 }
 
 /**
